@@ -1,0 +1,87 @@
+import matplotlib
+
+matplotlib.use('Agg')  # Must be before importing matplotlib.pyplot or pylab!
+import matplotlib.pyplot as plt
+
+
+def get_conditional_x(lbc, rbc, kernel, padding='VALID'):
+    imgl = tf.nn.conv2d(input=lbc, filters=kernel, strides=1, padding=padding)
+    imgr = tf.nn.conv2d(input=rbc, filters=kernel, strides=1, padding=padding)
+    return tf.reshape(tf.concat([imgl, imgr], -1), imgl.shape.as_list()[:-1] + [1, 1, 1, -1])
+
+
+batch = next(iter(ds))
+x = get_conditional_x(batch[0], batch[1], FILTER)
+icnn = crf.potential
+y = tf.reshape(tf.cast(tf.linspace(-10., 50., 3000), tf.float64), [1, 1, 1, 1, 1, -1])
+
+for i in range(40):
+    icnn.xpath(x[1:2, 30:31, 70 + i: 71 + i, ..., :])
+    fy, _ = icnn((y, tf.zeros([1, 2], dtype=tf.float64)))
+    fig, ax = plt.subplots()
+    ax.plot(tf.squeeze(y), tf.squeeze(fy))
+    ax.set(xlabel='y', ylabel='f(y|x)', title='PICNN')
+    ax.grid()
+    fig.savefig(log_dir + f'/icnn/{i}.png')
+    plt.close()
+
+
+def estimate_disparity(crf, lbc, rbc, lr, max_iter, kernel, start="random"):
+    """given left batch and right batch images, return batch disparity map"""
+    opt = tf.keras.optimizers.Adamax(learning_rate=lr)
+    # start from random disparity(y) value
+    y = tf.Variable(
+        initial_value=tf.random.uniform(minval=1., maxval=50., shape=lbc.shape.as_list() + [1, 1], dtype=lbc.dtype),
+        constraint=tf.keras.constraints.non_neg(),
+        trainable=True)
+
+    # y iniialize from mean
+    if start == "mean":
+        crf.potential.xpath(get_conditional_x(lbc, rbc, kernel))
+        if "-cont-" not in log_dir:
+            crf.gmm.init_marginal()
+        # infer out distribution given current batch
+        crf.logZ = -crf.gmm.infer(crf.potential, tf.constant(INFER_ITERATIONS))
+        y[:, 2:-2, 9:-9, ...].assign(crf.gmm.mu.read_value())
+
+    crf.potential.xpath(get_conditional_x(lbc, rbc, kernel, padding='SAME'))
+    for i in tf.range(max_iter):
+        with tf.GradientTape(watch_accessed_variables=False) as tape:
+            tape.watch([y])
+            ye = tf.stack([tf.tile(y, [1, 1, 1, 2, 1, 1]), tf.concat([tf.roll(y, -1, 1), tf.roll(y, -1, 2)], 3)], -1)
+            fn, fe = crf.potential(inputs=[y, ye])
+            energy = -(tf.reduce_sum(fn, [1, 2, 3, 4, 5]) + tf.reduce_sum(fe, [1, 2, 3, 4, 5]))
+        grd = tape.gradient(energy, [y])
+        opt.apply_gradients(zip(grd, [y]))
+        tf.print(tf.strings.format('infer:{}, energy={}', (i, tf.reduce_mean(energy))))
+    return tf.squeeze(y.read_value())
+
+
+disparities = estimate_disparity(crf, batch[0], batch[1], 0.01, 2000, FILTER, start="mean")
+# disparities = crf.estimate_disparity(batch[0], batch[1], 0.1, 1000, FILTER)
+
+for i in range(disparities.shape[0]):
+    plt.imsave(log_dir + f'/disp/{i}.png', disparities[i, ...], cmap='gray')
+    # plt.savefig(log_dir + f'/disp/{i}.png')
+
+file_writer = tf.summary.create_file_writer(log_dir)
+with file_writer.as_default():
+    imgs_ds0 = tf.data.Dataset.list_files(log_dir + '/icnn/*.png', shuffle=False)
+    imgs_ds0 = imgs_ds0.map(lambda x: tf.image.decode_png(tf.io.read_file(x)))
+    images0 = tf.stack([i for i in imgs_ds0], 0)
+    imgs_ds1 = tf.data.Dataset.list_files(log_dir + '/disp/*.png', shuffle=False)
+    imgs_ds1 = imgs_ds1.map(lambda x: tf.image.decode_png(tf.io.read_file(x)))
+    images1 = tf.stack([i for i in imgs_ds1], 0)
+    tf.summary.image("Potentials(sampled)", images0, max_outputs=100, step=0)
+    tf.summary.image("Disparities(sampled)", images1, max_outputs=100, step=0)
+
+# exec(open('cmd.py').read())
+# y = tf.cast(tf.linspace(-30., 30., 200), tf.float64) 
+# y1, y2 = tf.meshgrid(y, y)                                       
+# y1 = tf.reshape(y1, [1, 1, 1, 1, 1, -1])                         
+# y2 = tf.reshape(y2, [1, 1, 1, 1, 1, -1])                         
+# ye = tf.stack([y1, y2], -1)                                      
+# fy , fye = icnn((y, ye))                                         
+# points = tf.concat([tf.squeeze(ye), tf.reshape(fye, [-1,1])], -1)
+# import scipy.io
+# scipy.io.savemat('test.mat', dict(p=points.numpy()))
