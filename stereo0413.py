@@ -163,7 +163,7 @@ def mae(y_true, y_pred):
 if __name__ == "__main__":
     time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     log_dir = 'logs/e2e/' + time + f'-{DS_NAME}-{CROPPED_H}x{CROPPED_W}_d{DISPARITIES}_IR-{INFER_RATE}_ITER-{INFER_ITER}_TR-{LEARN_RT}_BS-{BATCH_SIZE}_{NET}-supermodular'
-    weights_dir = 'logs/e2e/20210909-100832-sceneflow-408x720_d192_IR-0.01_ITER-21_TR-1e-05_BS-6_leastereo-supermodular/old'
+    #weights_dir = 'logs/e2e/20210909-100832-sceneflow-408x720_d192_IR-0.01_ITER-21_TR-1e-05_BS-6_leastereo-supermodular/old'
     # scheduler_cbk = tf.keras.callbacks.LearningRateScheduler((lambda e: 0.98 ** e * LEARN_RT), verbose=1)
     callbacks = [tf.keras.callbacks.TensorBoard(log_dir=log_dir, write_graph=False, profile_batch=0),
                  # scheduler_cbk,
@@ -189,7 +189,7 @@ if __name__ == "__main__":
         optimizer = tf.keras.optimizers.Adam(lr=LEARN_RT)
         # optimizer = tfa.optimizers.AdamW(learning_rate=lr, weight_decay=lambda: 1e-3 * schedule(step))
         model.compile(loss=loss3 if NET == 'psm' else loss, metrics=[mae], optimizer=optimizer)
-        model.load_weights(weights_dir + '/089.ckpt')
+        #model.load_weights(weights_dir + '/089.ckpt')
         # model.unary_net.set_weights(tmp_model.unary_net.get_weights())
         # model.pairwise_net.set_weights(tmp_model.pairwise_net.get_weights())
         tf.keras.backend.set_value(model.optimizer.learning_rate, LEARN_RT)
@@ -198,4 +198,4 @@ if __name__ == "__main__":
     # dataset = get_dataset(shuffle=True, name=DS_NAME, scene='fly3d', list_path="")
     dataset = get_dataset(shuffle=True, name=DS_NAME, scene='train-2015', list_path="")
     # val_data = get_dataset(shuffle=False, name='real_kitti', scene='validation-201*')
-    model.fit(dataset, callbacks=callbacks, epochs=128, initial_epoch=0)
+    model.fit(dataset, callbacks=callbacks, epochs=128, initial_epoch=0, validation_split=0.1)
