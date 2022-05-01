@@ -198,4 +198,4 @@ if __name__ == "__main__":
     # dataset = get_dataset(shuffle=True, name=DS_NAME, scene='fly3d', list_path="")
     dataset = get_dataset(shuffle=True, name=DS_NAME, scene='train-2015', list_path="")
     # val_data = get_dataset(shuffle=False, name='real_kitti', scene='validation-201*')
-    model.fit(dataset, callbacks=callbacks, epochs=128, initial_epoch=0, validation_split=0.1)
+    model.fit(dataset, callbacks=callbacks, epochs=128, initial_epoch=0)
